@@ -363,6 +363,8 @@ local function registerFilter(filterType, filterTypeName)
 	local usingBagAndSlot = usingBagIdAndSlotIndexFilterFunction[filterType]
 	d(prefixBr .. "TEST - Registering " .. filterTypeName .. " [" ..tos(filterType) .."], filterFunction: " .. (useDefaultFilterFunction and "default") or "custom" .. ", invSlotFilterFunction: " .. tos(not usingBagAndSlot))
 	libFilters_RegisterFilter(libFilters, filterTag, filterType, (usingBagAndSlot and filterBagIdAndSlotIndexCallback) or filterSlotDataCallback)
+
+	return useDefaultFilterFunction
 end
 
 local function refresh(dataList)
@@ -370,16 +372,21 @@ local function refresh(dataList)
 		local filterType = filterData.filterType
 		local isRegistered = libFilters_IsFilterRegistered(libFilters, filterTag, filterType)
 		local filterTypeName = libFilters_GetFilterTypeName(libFilters, filterType)
-		
+		local usesDefaultFilterFunction = false
 		if enabledFilters[filterType] == true then
+			if not isRegistered then
+				usesDefaultFilterFunction = registerFilter(filterType, filterTypeName)
+			end
+			if usesDefaultFilterFunction == false then
+				filterTypeName = filterTypeName .. " - Custom"
+			end
+
 			local data = {
 				['filterType'] 	= filterType,
 				['name'] 		= filterTypeName
 			}
 			tins(dataList, ZO_ScrollList_CreateDataEntry(LIST_TYPE, data))
-			if not isRegistered then
-				registerFilter(filterType, filterTypeName)
-			end
+
 		elseif isRegistered then
 			d(prefixBr .. "TEST - Unregistering " .. filterTypeName .. " [" ..tos(filterType) .."]")
 			libFilters_UnregisterFilter(libFilters, filterTag, filterType)
@@ -477,10 +484,11 @@ local function allButtonToggle()
 end
 
 local function updateCurrentFilterPanelLabel(stateStr)
+d("!!! updateCurrentFilterPanelLabel - state: " ..tos(stateStr))
 	if currentFilterPanelLabel == nil then return end
-	local currentFilterPanel = libFilters._currentFilterType
 	local currentFilterPanelName
 	if stateStr == SCENE_SHOWN then
+		local currentFilterPanel = libFilters._currentFilterType
 		if (currentFilterPanel == nil or currentFilterPanel == 0) then return end
 		currentFilterPanelName = libFilters_GetFilterTypeName(libFilters, currentFilterPanel)
 		if currentFilterPanelName == nil then currentFilterPanelName = "unknown" end
@@ -520,6 +528,7 @@ local function intializeFilterUI()
 	currentFilterPanelLabel:SetDimensions(345, 25)
 	currentFilterPanelLabel:SetAnchor(TOPLEFT, tlc, nil, 5, 5)
 	currentFilterPanelLabel:SetText("Current filterPanel: ")
+	updateCurrentFilterPanelLabel(SCENE_SHOWN)
 
 	-- create main LF_constants list
 	-- this list is used to enable/disable LF_constants filters
@@ -630,7 +639,7 @@ end
 
 local function callbackFunctionForPanelShowOrHide(filterTypeName, filterType, stateStr, isInGamepadMode, fragmentOrSceneOrControl, lReferencesToFilterType)
 	local filterTypeNameStr = filterTypeName .. " [" .. tos(filterType) .. "]"
-	d(prefixBr .. "filterType: " .. filterTypeNameStr .. ", state: " .. stateStr)
+	d(prefixBr .. "TEST callback - filterType: " .. filterTypeNameStr .. ", state: " .. stateStr)
 	updateCurrentFilterPanelLabel(stateStr)
 end
 
@@ -638,7 +647,11 @@ local function enableFilterTypeCallbacks()
 	local libFiltersFilterConstants = libFilters.constants.filterTypes
 	--For each filterType register a stateChange for show/hidestate change
 	for filterType, filterTypeName in ipairs(libFiltersFilterConstants) do
+		--Shown callbacks
 		local callbackName = libFilters_CreateCallbackName(libFilters, filterType, true)
+		CM:RegisterCallback(callbackName, function(...) callbackFunctionForPanelShowOrHide(filterTypeName, ...) end)
+		--Hidden callbacks
+		callbackName = libFilters_CreateCallbackName(libFilters, filterType, false)
 		CM:RegisterCallback(callbackName, function(...) callbackFunctionForPanelShowOrHide(filterTypeName, ...) end)
 	end
 end
