@@ -13,7 +13,7 @@ adddons to this inventory. See table libFiltersFilterConstants for the value = "
 The number of the constant increases by 1 with each new added constant/panel.
 The minimum valueis LF_FILTER_MIN (1) and the maximum is LF_FILTER_MAX (#libFiltersFilterConstants). There exists a
 "fallback" constant LF_FILTER_ALL (9999) which can be used to register filters for ALL exisitng LF_* constants. If any
-LF_* constant got no filterFunction registered, the entries in filters[LF_FILTER_ALL] will be used instead (if
+LF_* constant has no filterFunction registered, the entries in filters[LF_FILTER_ALL] will be used instead (if
 existing, and the flag to use the LF_FILTER_ALL fallback is enabled (boolean true) via function
 libFilters:SetFilterAllState(boolean newState)
 
@@ -43,7 +43,7 @@ added it's filterFunctions) via the registered filterFunctions at .additionalFil
 The files in the Gamepad folder define the custom fragments which were created for the Gamepad scenes to try to keep it
 similar to the keyboard fragments (as inventory shares the same PLAYER_INVENTORY variables for e.g. player inventory,
 bank/guild bank/house bank deposit, mail send and player2player trade) there needs to be one unique object per panel to
-store the .additionalFilter entry. And this are the fragments in keyboard mode, and now custom fragments starting with
+store the .additionalFilter entry. This is done in the fragments in keyboard mode, and now custom fragments starting with
 LIBFILTERS3_ in gamepad mode.
 These fragments will be added to vanilla gamepad scenes/fragments so they show/hide with them properly.
 
@@ -171,7 +171,7 @@ The following example code initiates the library and adds a filter function to t
 -> See file /test/test.lua for more examples.
 ```lua
 --Call at EVENT_ADD_ON_LOADED as the library, once added to your addon's manifest .txt file tag ## DependsOn: LibFilters-3.0, will be ready then (loaded dependency before your addon was loaded)
---Initi the library and it's API
+--Initialize the library and it's API
 local libFilters = LibFilters3
 libFilters:InitializeLibFilters()
 
@@ -203,10 +203,10 @@ local callbackNameInvShown = libfilters:CreateCallbackName(LF_INVENTORY, true)
 --Makes: "LibFilters3-shown-1"
 
 --The callbackFunction you register to it needs to provide the following parameters in the following order:
---number filterType is the LF_* constantfor the panel currently shown/hidden
---string stateStr will be SCENE_SHOWN ("shown") if shon or SCENE_HIDDEN ("hidden") if hidden callback was fired
+--number filterType is the LF_* constant for the panel currently shown/hidden
+--string stateStr will be SCENE_SHOWN ("shown") if shown or SCENE_HIDDEN ("hidden") if hidden callback was fired
 --boolean isInGamepadMode is true if we are in Gamepad input mode and false if in keyboard mode
---refVar fragmentOrSceneOrControl is the frament/scene/control which was used to do the isShown/isHidden check
+--refVar fragmentOrSceneOrControl is the fragment/scene/control which was used to do the isShown/isHidden check
 --table lReferencesToFilterType will contain additional reference variables used to do shown/hidden checks
 
 local function callbackFunctionForInvShown(filterType, fragmentOrSceneOrControl, lReferencesToFilterType, isInGamepadMode, stateStr)
@@ -216,7 +216,7 @@ local function callbackFunctionForInvShown(filterType, fragmentOrSceneOrControl,
   end
 end
 local function callbackFunctionForInvHidden(filterType, fragmentOrSceneOrControl, lReferencesToFilterType, isInGamepadMode, stateStr)
-  --Unregister your filterFunction here e.g. or do whatever is needed, ikehiding custom controls of your addon at the currently hidden panel
+  --Unregister your filterFunction here e.g. or do whatever is needed, like hiding custom controls of your addon at the currently hidden panel
   libFilters:UnRegisterFilter(myAddonUniqueFilterTag, LF_INVENTORY)
 end
 
@@ -248,12 +248,12 @@ function libFilters:GetMaxFilterType()
 
 --Set the state of the LF_FILTER_ALL "fallback" filter possibilities.
 --If boolean newState is enabled: function runFilters will also check for LF_FILTER_ALL filter functions and run them:
---If the filterType passed to runfilters function got no registered filterTags with filterFunctions, the LF_FILTER_ALL "fallback" will be checked (if existing and enabled via this API function) and be run!
+--If the filterType passed to runFilters function has no registered filterTags with filterFunctions, the LF_FILTER_ALL "fallback" will be checked (if existing and enabled via this API function) and be run!
 --If boolean newState is disabled: function runFilters will NOT use LF_FILTER_ALL fallback functions
 function libFilters:SetFilterAllState(newState)
 
 
---Returns table LibFilters LF* filterType connstants table { [1] = "LF_INVENTORY", [2] = "LF_BANK_WITHDRAW", ... }
+--Returns table LibFilters LF* filterType constants table { [1] = "LF_INVENTORY", [2] = "LF_BANK_WITHDRAW", ... }
 --See file constants.lua, table "libFiltersFilterConstants"
 function libFilters:GetFilterTypes()
 
@@ -264,7 +264,7 @@ function libFilters:GetFilterTypeName(filterType)
 
 --Returns number typeOfFilterFunction used for the number LibFilters LF* filterType constant.
 --Either LIBFILTERS_FILTERFUNCTIONTYPE_INVENTORYSLOT or LIBFILTERS_FILTERFUNCTIONTYPE_BAGID_AND_SLOTINDEX
---or nil if error occured or no filter function type was determined
+--or nil if error occurred or no filter function type was determined
 -- returns number filterFunctionType
 function libFilters:GetFilterTypeFunctionType(filterType)
 
@@ -489,26 +489,26 @@ function libFilters:IsStoreShown(storeMode)
 
 
 --Is a list dialog currently shown?
---OPTIONAL parameter number filterType to detect the owner control which's hidden state will be checked
---OPTIONAL parameter userdata/control dialogOwnerControlToCheck which's hidden state will be checked
+--OPTIONAL parameter number filterType: filterType's owner control's hidden state will be checked
+--OPTIONAL parameter userdata/control dialogOwnerControlToCheck: parameter's hidden state will be checked
 --Any of the 2 parameters needs to be passed in
 --returns boolean isListDialogShown
 function libFilters:IsListDialogShown(filterType, dialogOwnerControlToCheck)
 
 
---Is the retrait station curently shown
+--Is the retrait station currently shown
 --returns boolean isRetraitStation
 function libFilters:IsRetraitStationShown()
 
 
---Is any crafting  station curently shown
+--Is any crafting  station currently shown
 --OPTIONAL parameter number craftType: If provided the shown state of the crafting table connected to the craftType will
 --be checked and returned
 --returns boolean isCraftingStationShown
 function libFilters:IsCraftingStationShown(craftType)
 
 
---Is the currnt crafting type jewelry?
+--Is the current crafting type jewelry?
 --return boolean isJewerlyCrafting
 function libFilters:IsJewelryCrafting()
 
@@ -539,7 +539,7 @@ function libFilters:SetResearchLineLoopValues(fromResearchLineIndex, toResearchL
 
 --Check if the addon CraftBagExtended is enabled and if the craftbag is currently shown at a "non vanilla craftbag" filterType
 --e.g. LF_MAIL_SEND, LF_TRADE, LF_GUILDSTORE_SELL, LF_GUILDBANK_DEPOSIT, LF_BANK_DEPOSIT, LF_HOUSE_BANK_DEPOSIT
---Will return boolean true if CBE is enabled and a supported parent filterType panelis shown. Else returns false
+--Will return boolean true if CBE is enabled and a supported parent filterType panel is shown. Else returns false
 function libFilters:IsCraftBagExtendedParentFilterType(filterTypesToCheck)
 ```
 
