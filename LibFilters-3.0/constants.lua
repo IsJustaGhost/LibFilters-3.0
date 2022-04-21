@@ -2,7 +2,7 @@
 --LIBRARY CONSTANTS
 ------------------------------------------------------------------------------------------------------------------------
 --Name, global variable LibFilters3 name, and version
-local MAJOR, GlobalLibName, MINOR = "LibFilters-3.0", "LibFilters3", 3.0
+local MAJOR, GlobalLibName, MINOR = "LibFilters-3.0", "LibFilters3", 3.3
 
 --Was the library loaded already? Abort here then
 if _G[GlobalLibName] ~= nil then return end
@@ -14,11 +14,13 @@ local strup = string.upper
 local tins = table.insert
 
 --local ZOs speed-up variables
+--local IsGamepad = IsInGamepadPreferredMode
 local SM = SCENE_MANAGER
 local getScene = SM.GetScene
 
 --Local library variable
 local libFilters = {}
+
 
 ------------------------------------------------------------------------------------------------------------------------
 --Create global library constant LibFilters3
@@ -38,6 +40,7 @@ libFilters.isInitialized = false
 --Use the LF_FILTER_ALL registered filters as fallback filterFunctions for all panels -> see file LibFilters-3.0.lua,
 --function runFilters, and API function libFilters:SetFilterAllState(boolean newState)
 libFilters.useFilterAllFallback = false
+
 
 ------------------------------------------------------------------------------------------------------------------------
 --Debugging output enabled/disabled: Changed via SLASH_COMMANDS /libfiltersdebug or /lfdebug
@@ -75,7 +78,7 @@ local function debugMessage(text, textType)
 	 else
 		  local textTypeToPrefix = {
 				["D"] = "Debug",
-				["E"] = "Error",
+				["E"] = "|cFF0000ERROR|r",
 				["I"] = "Info",
 				["V"] = "Verbose",
 				["W"] = "Warning",
@@ -121,6 +124,7 @@ debugFunctions.dfe = dfe
 local function debugSlashToggle(args)
 	libFilters.debug = not libFilters.debug
 	df("Debugging %s", (not libFilters.debug and "disabled") or "enabled")
+	libFilters.UpdateIsDebugEnabled()
 end
 debugFunctions.debugSlashToggle = debugSlashToggle
 
@@ -203,6 +207,7 @@ LF_FILTER_ALL					= 9999
 --Add the filterTypes to the constants
 constants.filterTypes = libFiltersFilterConstants
 
+
 --The default attribute at an inventory/layoutData/scene/control/userdata used within table filterTypeToReference
 --to store the libFilters 3.0 filterType. This will be used to determine which filterType is currently used and store the
 --filters + run the filter of the filterType.
@@ -229,6 +234,7 @@ constants.defaultAttributeToAddFilterFunctions = defaultOriginalFilterAttributeA
 local updaterNamePrefix = GlobalLibName .. "_update_"
 constants.updaterNamePrefix = updaterNamePrefix
 
+
 ------------------------------------------------------------------------------------------------------------------------
 --ZOs / ESOUI CONSTANTS
 ------------------------------------------------------------------------------------------------------------------------
@@ -249,12 +255,17 @@ gpc.customFragmentPrefix        = GlobalLibName:upper() .. "_" -- LIBFILTERS3_
 --CONSTANTS (*_GP is the gamepad mode constant, the others are commonly used with both, or keyboard only constants)
 ------------------------------------------------------------------------------------------------------------------------
 --The types of reference variables for the filterTypes and their detection
-constants.typeOfRef = {
+local typeOfRefConstants = {
 	[1] =   1, -- Control
 	[2] =   2, -- Scene
 	[3] =   3, -- Fragment
 	[99] = 99, -- Other
 }
+constants.typeOfRef = typeOfRefConstants
+local LIBFILTERS_CON_TYPEOFREF_CONTROL 	= typeOfRefConstants[1]
+local LIBFILTERS_CON_TYPEOFREF_SCENE 	= typeOfRefConstants[2]
+local LIBFILTERS_CON_TYPEOFREF_FRAGMENT = typeOfRefConstants[3]
+local LIBFILTERS_CON_TYPEOFREF_OTHER 	= typeOfRefConstants[99]
 
 --The names of the type of reference
 constants.typeOfRefToName = {
@@ -264,14 +275,60 @@ constants.typeOfRefToName = {
 	[99]= "Other",
 }
 
+--Constants of control names that should be searched "below" (childs) of a given control, as the control checks are done
+--in function getCtrl()
+local subControlsToLoop = {
+		[1] = "control",
+		[2] = "container",
+		[3] = "list",
+		[4] = "listView",
+		[5] = "panelControl",
+	}
+constants.subControlsToLoop = subControlsToLoop
+
+local function checkIfControlSceneFragmentOrOther(refVar)
+	local retVar
+	--Scene or fragment
+	if refVar.sceneManager and refVar.state then
+		if refVar.name ~= nil or refVar.fragments ~= nil then
+			retVar = LIBFILTERS_CON_TYPEOFREF_SCENE -- Scene
+		else
+			retVar = LIBFILTERS_CON_TYPEOFREF_FRAGMENT -- Fragment
+		end
+	--Control
+	elseif refVar.control or refVar.IsHidden then
+		retVar = LIBFILTERS_CON_TYPEOFREF_CONTROL -- Controlor TopLevelControl
+	--Other
+	else
+		retVar = LIBFILTERS_CON_TYPEOFREF_OTHER -- Other, e.g. boolean
+	end
+	if libFilters.debug then dv("!checkIfControlSceneFragmentOrOther - refVar %q: %s", tos(refVar), tos(retVar)) end
+	return retVar
+end
+libFilters.CheckIfControlSceneFragmentOrOther = checkIfControlSceneFragmentOrOther
+
+
+--Check if Universal Deconstruction is enabled
+libFilters.isUniversalDeconstructionProvided = false
+local isUniversalDeconstructionProvided = libFilters.isUniversalDeconstructionProvided
+local function isUniversalDeconGiven()
+	if not isUniversalDeconstructionProvided then
+		isUniversalDeconstructionProvided = (ZO_UNIVERSAL_DECONSTRUCTION_FILTER_TYPES ~= nil and true) or false
+	end
+	libFilters.isUniversalDeconstructionProvided = isUniversalDeconstructionProvided
+	return isUniversalDeconstructionProvided
+end
+isUniversalDeconGiven()
+
+
 
 --[Inventory types]
-local invTypeBackpack           =	INVENTORY_BACKPACK
-local invTypeQuest              = 	INVENTORY_QUEST_ITEM
-local invTypeBank               =	INVENTORY_BANK
-local invTypeGuildBank          =	INVENTORY_GUILD_BANK
-local invTypeHouseBank 			=	INVENTORY_HOUSE_BANK
-local invTypeCraftBag 			= 	INVENTORY_CRAFT_BAG
+local invTypeBackpack           		=	INVENTORY_BACKPACK
+local invTypeQuest              		= 	INVENTORY_QUEST_ITEM
+local invTypeBank               		=	INVENTORY_BANK
+local invTypeGuildBank          		=	INVENTORY_GUILD_BANK
+local invTypeHouseBank 					=	INVENTORY_HOUSE_BANK
+local invTypeCraftBag 					= 	INVENTORY_CRAFT_BAG
 constants.inventoryTypes = {}
 constants.inventoryTypes["player"]		=	invTypeBackpack
 constants.inventoryTypes["quest"] 		= 	invTypeQuest
@@ -286,9 +343,11 @@ constants.inventoryTypes["craftbag"] 	=	invTypeCraftBag
 ------------------------------------------------------------------------------------------------------------------------
 --CraftBagExtended
 local cbeSupportedFilterPanels = {
-	LF_MAIL_SEND, LF_TRADE,
-	LF_VENDOR_SELL, LF_GUILDSTORE_SELL,
-	LF_BANK_DEPOSIT, LF_GUILDBANK_DEPOSIT, LF_HOUSE_BANK_DEPOSIT
+	LF_MAIL_SEND,
+	LF_TRADE,
+	LF_VENDOR_SELL,
+	LF_GUILDSTORE_SELL,
+	LF_BANK_DEPOSIT, LF_GUILDBANK_DEPOSIT, LF_HOUSE_BANK_DEPOSIT,
 }
 constants.cbeSupportedFilterPanels = cbeSupportedFilterPanels
 
@@ -406,10 +465,10 @@ vendorRepairFragment._name = "REPAIR_FRAGMENT"
 kbc.storeWindows                  = {
 	[ZO_MODE_STORE_BUY] = 			vendorBuy,
 	[ZO_MODE_STORE_BUY_BACK] = 		vendorBuyBack,
-	[ZO_MODE_STORE_SELL] = 			vendorSell, --TODO: Working?
+	[ZO_MODE_STORE_SELL] = 			vendorSell,
 	[ZO_MODE_STORE_REPAIR] = 		vendorRepair,
-	[ZO_MODE_STORE_SELL_STOLEN] = 	vendorSell, --TODO: Working?
-	[ZO_MODE_STORE_LAUNDER] = 		vendorSell, --TODO: Working?
+	[ZO_MODE_STORE_SELL_STOLEN] = 	vendorSell,
+	[ZO_MODE_STORE_LAUNDER] = 		vendorSell,
 	[ZO_MODE_STORE_STABLE] = 		vendorBuy,
 }
 
@@ -501,6 +560,7 @@ kbc.enchantingScene			      = ENCHANTING_SCENE
 local enchantingScene 			  = kbc.enchantingScene
 
 --Alchemy
+kbc.alchemyClass                  =	ZO_Alchemy
 kbc.alchemy                       =	ALCHEMY
 local alchemy 					  = kbc.alchemy
 kbc.alchemyScene                  =	ALCHEMY_SCENE
@@ -511,11 +571,13 @@ local alchemyFragment 			  = kbc.alchemyFragment
 alchemyFragment._name = "ALCHEMY_FRAGMENT"
 
 --Provisioning
+kbc.provisionerClass              =	ZO_Provisioner
 kbc.provisioner			          = PROVISIONER
 local provisioner 				  = kbc.provisioner
 kbc.provisionerFragment			  = PROVISIONER_FRAGMENT
 local provisionerFragment		  = kbc.provisionerFragment
 provisionerFragment._name = "PROVISIONER_FRAGMENT"
+kbc.provisionerScene			  = PROVISIONER_SCENE
 
 --Retrait
 --keyboardConstants.retraitClass  = ZO_RetraitStation_Retrait_Base
@@ -527,6 +589,15 @@ retraitFragment._name = "RETRAIT_STATION_RETRAIT_FRAGMENT"
 
 --Reconstruction
 kbc.reconstruct                   =	ZO_RECONSTRUCT_KEYBOARD --todo not used yet
+
+--Universal Deconstruction
+local universalDeconstructPanel
+if isUniversalDeconstructionProvided then
+	kbc.universalDeconstruct 	  = UNIVERSAL_DECONSTRUCTION
+	kbc.universalDeconstructPanel = kbc.universalDeconstruct.deconstructionPanel
+	universalDeconstructPanel = kbc.universalDeconstructPanel
+	kbc.universalDeconstructScene = UNIVERSAL_DECONSTRUCTION_KEYBOARD_SCENE
+end
 
 --000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 
@@ -554,7 +625,7 @@ local invFragment_GP = gpc.invFragment_GP
 --gamepadConstants.invCraftbag_GP =	inventories[invTypeCraftBag] --TODO: test if GP craftbag still works. Else uncomment and re-add to filterTypeToReference[true] again
 
 --Quest items
-gpc.invQuests_GP                = invRootScene_GP --todo: use gamepad inventory root scene for quest hook? Better use something else like a gamepad quest fragment (if exists)
+--custom created gamepad fragment "gamepadLibFiltersInventoryQuestFragment"
 
 --Quickslots
 gpc.quickslots_GP 				= GAMEPAD_QUICKSLOT					--TODO: remove? Quickslots for gamepad are handled differently
@@ -653,7 +724,7 @@ local refinementScene_GP 		= gpc.refinementScene_GP
 
 --Create
 gpc.creationPanel_GP            = smithing_GP.creationPanel
-local creationPanel_GP 			= gpc.creationPanel_GP
+--local creationPanel_GP 			= gpc.creationPanel_GP
 gpc.creationScene_GP			= getScene(SM, "gamepad_smithing_creation")
 local creationScene_GP 			= gpc.creationScene_GP
 
@@ -716,6 +787,15 @@ local provisionerScene_GP 		 = gpc.provisionerScene_GP
 gpc.provisionerFragment_GP		 = GAMEPAD_PROVISIONER_FRAGMENT
 local provisionerFragment_GP 	 = gpc.provisionerFragment_GP
 
+--Universal Deconstruction
+local universalDeconstructPanel_GP
+if isUniversalDeconstructionProvided then
+	gpc.universalDeconstruct_GP  = UNIVERSAL_DECONSTRUCTION_GAMEPAD
+	gpc.universalDeconstructPanel_GP = gpc.universalDeconstruct_GP.deconstructionPanel
+	universalDeconstructPanel_GP = gpc.universalDeconstructPanel_GP
+	gpc.universalDeconstructScene_GP = UNIVERSAL_DECONSTRUCTION_GAMEPAD_SCENE
+end
+
 ------------------------------------------------------------------------------------------------------------------------
 --Custom created fragments -> See file /Gamepad/gamepadCustomFragments.lua
 -----------------------------------------------------------------------------------------------------------------------
@@ -739,6 +819,7 @@ gpc.customFragments             = {
 	[LF_GUILDSTORE_SELL] = 		{name = "BACKPACK_TRADING_HOUSE_SELL_GAMEPAD_FRAGMENT", fragment=nil},
 	[LF_MAIL_SEND] = 			{name = "BACKPACK_MAIL_SEND_GAMEPAD_FRAGMENT", 			fragment=nil},
 	[LF_TRADE] = 				{name = "BACKPACK_PLAYER_TRADE_GAMEPAD_FRAGMENT", 		fragment=nil},
+	[LF_INVENTORY_QUEST] =		{name = "BACKPACK_INVENTORY_QUEST_GAMEPAD_FRAGMENT", 	fragment=nil},
 }
 
 
@@ -830,6 +911,101 @@ for filterTypeValue, _  in pairs(libFiltersFilterConstants) do
 	end
 end
 
+--[Mapping for panelIdentifier to filterTypes]
+--e.g. the allowed filterTypes at the "bank" panel = withdraw and deposit
+-- The allowed filterTypes are determiend via the menu buttons given to switch between the filterTypes, e.g.
+-- smithing = refine, create, deconstruct, improve, research and researchDialog
+-->Unsupported menu buttons like "recipes at the crafting tables, except directly at provisioner" will not be listed!
+local validFilterTypesOfPanel = {
+	["alchemy"] = {
+		[LF_ALCHEMY_CREATION] = true,
+	},
+	["bank"]	= {
+		[LF_BANK_WITHDRAW] = true,
+		[LF_BANK_DEPOSIT] = true,
+	},
+	["companionInventory"]	= {
+		[LF_INVENTORY_COMPANION] = true
+	},
+	["enchanting"] = {
+		[LF_ENCHANTING_CREATION] = true,
+		[LF_ENCHANTING_EXTRACTION] = true,
+	},
+	["fence"] = {
+		[LF_FENCE_SELL] = true,
+		[LF_FENCE_LAUNDER] = true,
+	},
+	["guildBank"]	= {
+		[LF_GUILDBANK_WITHDRAW] = true,
+		[LF_GUILDBANK_DEPOSIT] = true,
+	},
+	["guildStore"] = {
+		[LF_GUILDSTORE_BROWSE] = true,
+		[LF_GUILDSTORE_SELL] = true,
+	},
+	["houseBank"] = {
+		[LF_HOUSE_BANK_WITHDRAW] = true,
+		[LF_HOUSE_BANK_DEPOSIT] = true,
+	},
+	["inventory"]	= {
+		[LF_INVENTORY] = true,
+		[LF_CRAFTBAG] = true,
+		[LF_INVENTORY_QUEST] = true,
+		[LF_QUICKSLOT] = true,
+	},
+	["jewelryCrafting"]	= {
+		[LF_JEWELRY_REFINE] = true,
+		[LF_JEWELRY_CREATION] = true,
+		[LF_JEWELRY_DECONSTRUCT] = true,
+		[LF_JEWELRY_IMPROVEMENT] = true,
+		[LF_SMITHING_RESEARCH] = true,
+		[LF_JEWELRY_RESEARCH_DIALOG] = true,
+	},
+	["mail"] = {
+		[LF_MAIL_SEND] = true,
+	},
+	["trade"] = {
+		[LF_TRADE] = true,
+	},
+	["provisioning"] = {
+		[LF_PROVISIONING_COOK] = true,
+		[LF_PROVISIONING_BREW] = true,
+	},
+	["retrait"] = {
+		[LF_RETRAIT] = true,
+	},
+	["smithing"] = {
+		[LF_SMITHING_REFINE] = true,
+		[LF_SMITHING_CREATION] = true,
+		[LF_SMITHING_DECONSTRUCT] = true,
+		[LF_SMITHING_IMPROVEMENT] = true,
+		[LF_SMITHING_RESEARCH] = true,
+		[LF_SMITHING_RESEARCH_DIALOG] = true,
+	},
+	["vendor"] = {
+		[LF_VENDOR_BUY] = true,
+		[LF_VENDOR_SELL] = true,
+		[LF_VENDOR_BUYBACK] = true,
+		[LF_VENDOR_REPAIR] = true,
+		[LF_SMITHING_RESEARCH] = true,
+		[LF_SMITHING_RESEARCH_DIALOG] = true,
+	},
+}
+mapping.validFilterTypesOfPanel = validFilterTypesOfPanel
+
+--The mapping between craftingType and the shown crafting panelIdentifier
+local craftingTypeToPanelId = {
+	[CRAFTING_TYPE_ALCHEMY] 		= "alchemy",
+	[CRAFTING_TYPE_CLOTHIER] 		= "smithing",
+	[CRAFTING_TYPE_ENCHANTING] 		= "enchanting",
+	[CRAFTING_TYPE_JEWELRYCRAFTING] = "jewelryCrafting",
+	[CRAFTING_TYPE_PROVISIONING] 	= "provisioning",
+	[CRAFTING_TYPE_BLACKSMITHING] 	= "smithing",
+	[CRAFTING_TYPE_WOODWORKING] 	= "smithing",
+}
+mapping.craftingTypeToPanelId = craftingTypeToPanelId
+
+
 --[Mapping for dialogs]
 --The dialogs which are given at a filterType, e.g. smithing research keyboard mode
 local researchPanelControl = researchPanel.control
@@ -854,15 +1030,133 @@ mapping.LF_FilterTypeToDialogOwnerControl = filterTypeToDialogOwnerControl
 --Enchaning (used to determine the correct LF_* filterType constant at enchanting tables, as they share the same inventory
 --ENCHANTING.inventory. Gamepad mode uses different scenes for enchating creation and extraction so there are used
 --callbacks to these scenes' state to se the appropriate LF_ENCHANTING_* constant
--->Used in function LibFilters:HookAdditionalFilterSpecial(specialType, inventory)
---[[
+-->Used in function LibFilters:HookAdditionalFilterSpecial(specialType, inventory) and special callbacks
 local enchantingModeToFilterType = {
-	 [ENCHANTING_MODE_CREATION]		= LF_ENCHANTING_CREATION,
-	 [ENCHANTING_MODE_EXTRACTION]	= LF_ENCHANTING_EXTRACTION,
-	 [ENCHANTING_MODE_RECIPES]		= nil --not supported yet
+	[ENCHANTING_MODE_NONE] 			= nil,
+	[ENCHANTING_MODE_CREATION]		= LF_ENCHANTING_CREATION,
+	[ENCHANTING_MODE_EXTRACTION]	= LF_ENCHANTING_EXTRACTION,
+	[ENCHANTING_MODE_RECIPES]		= nil --not supported
 }
 mapping.enchantingModeToFilterType = enchantingModeToFilterType
-]]
+
+local provisionerIngredientTypeToFilterType = {
+	[PROVISIONER_SPECIAL_INGREDIENT_TYPE_NONE] 			= nil,
+	[PROVISIONER_SPECIAL_INGREDIENT_TYPE_SPICES]		= LF_PROVISIONING_COOK,
+	[PROVISIONER_SPECIAL_INGREDIENT_TYPE_FLAVORING]		= LF_PROVISIONING_BREW,
+	[PROVISIONER_SPECIAL_INGREDIENT_TYPE_FURNISHING]	= nil --not supported
+}
+mapping.provisionerIngredientTypeToFilterType = provisionerIngredientTypeToFilterType
+
+local alchemyModeToFilterType = {
+	[ZO_ALCHEMY_MODE_NONE] 			= nil,
+	[ZO_ALCHEMY_MODE_CREATION]		= LF_ALCHEMY_CREATION,
+	[ZO_ALCHEMY_MODE_RECIPES]		= nil, -- not supported
+}
+mapping.alchemyModeToFilterType = alchemyModeToFilterType
+
+--Mapping for the smithing panels, and their filterTypes
+mapping.smithingMapping = {
+		[SMITHING_MODE_REFINEMENT] = {
+			filterType 			= LF_SMITHING_REFINE,
+			filterTypeJewelry 	= LF_JEWELRY_REFINE,
+			ctrl 				= refinementPanel.control,
+		},
+		[SMITHING_MODE_CREATION] = {
+			filterType 			= LF_SMITHING_CREATION,
+			filterTypeJewelry 	= LF_JEWELRY_CREATION,
+			ctrl 				= creationPanel.control,
+		},
+		[SMITHING_MODE_DECONSTRUCTION] = {
+			filterType 			= LF_SMITHING_DECONSTRUCT,
+			filterTypeJewelry 	= LF_JEWELRY_DECONSTRUCT,
+			ctrl 				= deconstructionPanel.control,
+		},
+		[SMITHING_MODE_IMPROVEMENT] = {
+			filterType 			= LF_SMITHING_IMPROVEMENT,
+			filterTypeJewelry 	= LF_JEWELRY_IMPROVEMENT,
+			ctrl 				= improvementPanel.control,
+		},
+		[SMITHING_MODE_RESEARCH] = {
+			filterType 			= LF_SMITHING_RESEARCH,
+			filterTypeJewelry 	= LF_JEWELRY_RESEARCH,
+			ctrl 				= researchPanelControl,
+		},
+	}
+
+--Mapping for the crafting related filterTypes
+local isCraftingFilterType = {
+	[LF_SMITHING_REFINE] = true,
+	[LF_JEWELRY_REFINE] = true,
+	[LF_SMITHING_CREATION] = true,
+	[LF_JEWELRY_CREATION] = true,
+	[LF_SMITHING_DECONSTRUCT] = true,
+	[LF_JEWELRY_DECONSTRUCT] = true,
+	[LF_SMITHING_IMPROVEMENT] = true,
+	[LF_JEWELRY_IMPROVEMENT] = true,
+	[LF_SMITHING_RESEARCH] = true,
+	[LF_JEWELRY_RESEARCH] = true,
+	[LF_SMITHING_RESEARCH_DIALOG] = true,
+	[LF_JEWELRY_RESEARCH_DIALOG] = true,
+	[LF_ALCHEMY_CREATION] = true,
+	[LF_PROVISIONING_BREW] = true,
+	[LF_PROVISIONING_COOK] = true,
+	[LF_ENCHANTING_CREATION] = true,
+	[LF_ENCHANTING_EXTRACTION] = true,
+	--Is this crafting?
+	--[LF_RETRAIT] = true,
+}
+mapping.isCraftingFilterType = isCraftingFilterType
+
+--Mapping for the filterType to the normal deconstruction/extraction, or universal deconstruction panels
+local filterTypeToUniversalOrNormalDeconAndExtractVars = {}
+filterTypeToUniversalOrNormalDeconAndExtractVars = {
+	--KEYBOARD mode---------------------------------------
+	[false] = {
+		[LF_SMITHING_DECONSTRUCT] = {
+			[true] = 	universalDeconstructPanel or deconstructionPanel,
+			[false] = 	deconstructionPanel,
+		},
+		[LF_ENCHANTING_EXTRACTION] = {
+			[true] = 	universalDeconstructPanel or enchanting,
+			[false] = 	enchanting,
+		}
+	},
+	--GAMEPAD mode---------------------------------------
+	[true] = {
+		[LF_SMITHING_DECONSTRUCT] = {
+			[true] = 	universalDeconstructPanel_GP or deconstructionPanel_GP,
+			[false] = 	deconstructionPanel_GP,
+		},
+		[LF_ENCHANTING_EXTRACTION] = {
+			[true] = 	universalDeconstructPanel_GP or enchanting_GP,
+			[false] = 	enchanting_GP,
+		}
+	},
+}
+mapping.filterTypeToUniversalOrNormalDeconAndExtractVars = filterTypeToUniversalOrNormalDeconAndExtractVars
+
+local universalDeconTabKeyToLibFiltersFilterType = {
+	["all"] =           LF_SMITHING_DECONSTRUCT,
+	["armor"] =         LF_SMITHING_DECONSTRUCT,
+	["weapons"] =       LF_SMITHING_DECONSTRUCT,
+	["jewelry"] =       LF_JEWELRY_DECONSTRUCT,
+	["enchantments"] =  LF_ENCHANTING_EXTRACTION,
+}
+mapping.universalDeconTabKeyToLibFiltersFilterType = universalDeconTabKeyToLibFiltersFilterType
+
+local universalDeconFilterTypeToFilterBase = {
+	[LF_SMITHING_DECONSTRUCT] =     deconstructionPanel,
+	[LF_JEWELRY_DECONSTRUCT] =      deconstructionPanel,
+	[LF_ENCHANTING_EXTRACTION] =    enchantingExtractScene_GP
+}
+mapping.universalDeconFilterTypeToFilterBase = universalDeconFilterTypeToFilterBase
+
+local universalDeconLibFiltersFilterTypeSupported = {}
+for filterType, _ in pairs(universalDeconFilterTypeToFilterBase) do
+	universalDeconLibFiltersFilterTypeSupported[filterType] = true
+end
+mapping.universalDeconLibFiltersFilterTypeSupported = universalDeconLibFiltersFilterTypeSupported
+
 --[Mapping LibFilters LF* constants not being hooked normal -> Special functions used]
 local standardSpecialHookFunc = 		"HookAdditionalFilterSpecial" 		--LibFilters:HookAdditionalFilterSpecial
 local standardSceneSpecialHookFunc = 	"HookAdditionalFilterSceneSpecial"	--LibFilters:HookAdditionalFilterSceneSpecial
@@ -980,7 +1274,6 @@ local filterTypeToReference = {
 
 	--Gamepad mode
 	[true]  = {
-		[LF_INVENTORY_QUEST]          = { gpc.invQuests_GP },
 		[LF_INVENTORY_COMPANION]      = { companionEquipment_GP },
 
 		[LF_VENDOR_BUY]               = { gpc.vendorBuy_GP },
@@ -999,13 +1292,14 @@ local filterTypeToReference = {
 
 
 		--Updated with correct fragment in file /gamepad/gamepadCustomFragments.lua as the fragments are created
-		[LF_INVENTORY]                = {}, --uses fragment
-		[LF_BANK_DEPOSIT]             = {}, --uses fragment
-		[LF_GUILDBANK_DEPOSIT]        = {}, --uses fragment
-		[LF_HOUSE_BANK_DEPOSIT]       = {}, --uses fragment
-		[LF_GUILDSTORE_SELL]          = {}, --uses fragment
-		[LF_MAIL_SEND]                = {}, --uses fragment
-		[LF_TRADE]                    = {}, --uses fragment
+		[LF_INVENTORY]                = {}, --custom created gamepad fragment gamepadLibFiltersInventoryFragment
+		[LF_BANK_DEPOSIT]             = {}, --custom created gamepad fragment gamepadLibFiltersBankDepositFragment
+		[LF_GUILDBANK_DEPOSIT]        = {}, --custom created gamepad fragment gamepadLibFiltersGuildBankDepositFragment
+		[LF_HOUSE_BANK_DEPOSIT]       = {}, --custom created gamepad fragment gamepadLibFiltersHouseBankDepositFragment
+		[LF_GUILDSTORE_SELL]          = {}, --custom created gamepad fragment gamepadLibFiltersGuildStoreSellFragment
+		[LF_MAIL_SEND]                = {}, --custom created gamepad fragment gamepadLibFiltersMailSendFragment
+		[LF_TRADE]                    = {}, --custom created gamepad fragment gamepadLibFiltersPlayerTradeFragment
+		[LF_INVENTORY_QUEST]          = {}, --custom created gamepad fragment gamepadLibFiltersInventoryQuestFragment
 
 
 		--Shared with keyboard mode -> See entry with LF_* at [false] (using keyboardConstants) above
@@ -1046,6 +1340,7 @@ local filterTypeToReference = {
 	},
 }
 mapping.LF_FilterTypeToReference = filterTypeToReference
+
 
 --The mapping table containing the "lookup" data of control or scene/fragment to us for "is hidden" checks
 --The control must be a control with IsHidden() function or a .control subtable with that function
@@ -1125,7 +1420,7 @@ local filterTypeToCheckIfReferenceIsHidden = {
 		--Works: 2021-12-13
 		[LF_FENCE_LAUNDER]            = { ["control"] = fence, 							["scene"] = "fence_keyboard", 		["fragment"] = invFenceLaunderFragment, },
 		--Works: 2021-12-13
-		[LF_GUILDSTORE_SELL]          = { ["control"] = guildStoreObj, 					["scene"] = "tradinghouse", 		["fragment"] = guildStoreSellFragment, },
+		[LF_GUILDSTORE_SELL]          = { ["control"] = guildStoreObj, 					["scene"] = "tradinghouse", 		["fragment"] = guildStoreSellFragment, }, -- = inventoryFragment
 		--Works: 2021-12-13
 		[LF_MAIL_SEND]                = { ["control"] = kbc.mailSendObj, 				["scene"] = "mailSend", 			["fragment"] = mailSendFragment, },
 		--Works: 2021-12-13
@@ -1186,7 +1481,7 @@ local filterTypeToCheckIfReferenceIsHidden = {
 											}
 		},
 		--Works: 2021-12-13
-		[LF_SMITHING_RESEARCH]        = { ["control"] = researchPanel, 					["scene"] = "smithing", 			["fragment"] = nil,
+		[LF_SMITHING_RESEARCH]        = { ["control"] = researchPanelControl, 					["scene"] = "smithing", 			["fragment"] = nil,
 										   ["special"] = {
 												[1] = {
 													["control"]  =  _G[GlobalLibName],
@@ -1241,7 +1536,7 @@ local filterTypeToCheckIfReferenceIsHidden = {
 											}
 		},
 		--Works: 2021-12-13
-		[LF_JEWELRY_RESEARCH]         = { ["control"] = researchPanel, 					["scene"] = "smithing", 			["fragment"] = nil,
+		[LF_JEWELRY_RESEARCH]         = { ["control"] = researchPanelControl, 					["scene"] = "smithing", 			["fragment"] = nil,
 										   ["special"] = {
 												[1] = {
 													["control"]  =  _G[GlobalLibName],
@@ -1341,7 +1636,7 @@ local filterTypeToCheckIfReferenceIsHidden = {
 	--Gamepad mode
 	[true]  = {
 		--Works, 2021-12-20
-		[LF_INVENTORY_QUEST]          = { ["control"] = ZO_GamepadInventoryTopLevel,	["scene"] = invRootScene_GP,		["fragment"] = invFragment_GP,
+		[LF_INVENTORY_QUEST]          = { ["control"] = ZO_GamepadInventoryTopLevel,	["scene"] = invRootScene_GP,		["fragment"] = nil, --custom created gamepad fragment "gamepadLibFiltersInventoryQuestFragment"
 										  ["special"] = {
 											  [1] = {
 												  ["control"]         = invBackpack_GP,
@@ -1474,7 +1769,7 @@ local filterTypeToCheckIfReferenceIsHidden = {
 
 		--Updated with correct fragment in file /gamepad/gamepadCustomFragments.lua as the fragments are created
 		--Works, 2021-12-19
-		[LF_INVENTORY]                = { ["control"] = ZO_GamepadInventoryTopLevel,	["scene"] = invRootScene_GP,			["fragment"] = invFragment_GP,
+		[LF_INVENTORY]                = { ["control"] = ZO_GamepadInventoryTopLevel,	["scene"] = invRootScene_GP,			["fragment"] = invFragment_GP, --uses GAMEPAD_INVENTORY_FRAGMENT instead of custom gamepadLibFiltersInventoryFragment now for detection as this' shown state get's updated properly after quickslot wheel was closed again
 										  ["special"] = {
 											  [1] = {
 												  ["control"]         = _G[GlobalLibName],
@@ -1517,12 +1812,20 @@ local filterTypeToCheckIfReferenceIsHidden = {
 		[LF_TRADE]                    = { ["control"] = gpc.invPlayerTrade_GP, 					["scene"] = gpc.invPlayerTradeScene_GP, 	["fragment"] = invPlayerTradeFragment_GP, },
 
 		--Works, 2021-12-19
-		[LF_CRAFTBAG]                 = { ["control"] = ZO_GamepadInventoryTopLevelMaskContainerCraftBag, 	["scene"] = invRootScene_GP, 	["fragment"] = invFragment_GP,
+		[LF_CRAFTBAG]                 = { ["control"] = ZO_GamepadInventoryTopLevelMaskContainerCraftBag, 	["scene"] = invRootScene_GP, 	["fragment"] = invFragment_GP, --control will be nil here, and initialized in GAMEPAD_INVENTORY:OnDeferredInitialize. So it will be populated to this table here there
 										  ["special"] = {
+											--[[
 											  [1] = {
-												  ["control"]         = invBackpack_GP.craftBagList,
-												  ["funcOrAttribute"] = "IsActive",
-												  ["params"]          = { invBackpack_GP.craftBagList },
+												  ["control"]         = invBackpack_GP.craftBagList,		--will be nil here, and initialized in GAMEPAD_INVENTORY:OnDeferredInitialize. So it will be populated to this table here there
+												  ["funcOrAttribute"] = "IsActive",							--On first open of the gamepad CraftBag list this function will return false...
+												  ["params"]          = { invBackpack_GP.craftBagList },	--will be nil here, and initialized in GAMEPAD_INVENTORY:OnDeferredInitialize. So it will be populated to this table here there
+												  ["expectedResults"] = { true },
+											  }
+											  ]]
+											  [1] = {
+												  ["control"]         = _G[GlobalLibName],		--will be nil here, and initialized in GAMEPAD_INVENTORY:OnDeferredInitialize. So it will be populated to this table here there
+												  ["funcOrAttribute"] = "IsVanillaCraftBagShown", --On first open of the gamepad CraftBag list this function will return false...
+												  ["params"]          = { _G[GlobalLibName] },	--will be nil here, and initialized in GAMEPAD_INVENTORY:OnDeferredInitialize. So it will be populated to this table here there
 												  ["expectedResults"] = { true },
 											  }
 										  }
@@ -1735,6 +2038,8 @@ local filterTypeToCheckIfReferenceIsHidden = {
 	}
 }
 mapping.LF_FilterTypeToCheckIfReferenceIsHidden = filterTypeToCheckIfReferenceIsHidden
+
+
 --Define the order in which the controls/scenes/fragments should be checked if no filterType is given.
 --This is important o e.g. check LF_INVENTORY at last as the control of it could be used in multiple other filterTypes.
 --Non-gap number index = { filterType = LF_*filterType constant, checkTypes = {"control", "fragment", "special", "specialForced" } }
@@ -1962,6 +2267,14 @@ local callbacks = libFilters.mapping.callbacks
 --The pattern for the filterPanel shown/hidden callbacks, e.g. "LibFilters3-shown-1" for SCENE_SHOWN and filterType LF_INVENTORY
 libFilters.callbackPattern = GlobalLibName .. "-%s-%s"
 
+--The supported SCENE states for the callbacks
+--Currently: shown and hidden
+local sceneStatesSupportedForCallbacks = {
+	[SCENE_SHOWN] 	= true,
+	[SCENE_HIDDEN] 	= true,
+}
+callbacks.sceneStatesSupportedForCallbacks = sceneStatesSupportedForCallbacks
+
 
 --[fragment] = { LF_* filterTypeConstant, LF_* filterTypeConstant, ... } -> Will be checked in this order
 --0 means no dedicated LF_* constant can be used and the filterType will be determined automatically via function
@@ -1977,10 +2290,7 @@ local callbacksUsingFragments = {
 		--LF_GUILDBANK_DEPOSIT
 		--LF_HOUSE_BANK_DEPOSIT
 		--LF_VENDOR_SELL
-		[inventoryFragment] 			= { LF_INVENTORY, LF_BANK_DEPOSIT, LF_GUILDBANK_DEPOSIT, LF_HOUSE_BANK_DEPOSIT, LF_VENDOR_SELL },
-		--LF_PROVISIONING_COOK
-		--LF_PROVISIONING_BREW
-		[provisionerFragment]			= { LF_PROVISIONING_COOK, LF_PROVISIONING_BREW },
+		[inventoryFragment] 			= { LF_INVENTORY, LF_BANK_DEPOSIT, LF_GUILDBANK_DEPOSIT, LF_HOUSE_BANK_DEPOSIT, LF_VENDOR_SELL, LF_GUILDSTORE_SELL },
 
 		--Dedicated fragments
 		[invQuestFragment] 				= { LF_INVENTORY_QUEST },
@@ -1995,10 +2305,8 @@ local callbacksUsingFragments = {
 		[invFenceSellFragment]         	= { LF_FENCE_SELL },
 		[invFenceLaunderFragment]      	= { LF_FENCE_LAUNDER },
 		[guildStoreBrowseFragment]     	= { LF_GUILDSTORE_BROWSE },
-		[guildStoreSellLayoutFragment] 	= { LF_GUILDSTORE_SELL },
 		[mailSendFragment]             	= { LF_MAIL_SEND },
 		[player2playerTradeFragment]   	= { LF_TRADE },
-		[alchemyFragment]              	= { LF_ALCHEMY_CREATION },
 		[retraitFragment]              	= { LF_RETRAIT },
 		[companionEquipmentFragment]   	= { LF_INVENTORY_COMPANION },
 	},
@@ -2007,14 +2315,6 @@ local callbacksUsingFragments = {
 
 	--Gamepad
 	[true] = {
-		--LF_INVENTORY_QUEST
-		[invFragment_GP]					= { LF_INVENTORY_QUEST },
-		--LF_SMITHING_RESEARCH_DIALOG
-		--LF_JEWELRY_RESEARCH_DIALOG
-		[researchChooseItemDialog_GP]		= { LF_SMITHING_RESEARCH_DIALOG, LF_JEWELRY_RESEARCH_DIALOG },
-		--LF_PROVISIONING_COOK
-		--LF_PROVISIONING_BREW
-		[provisionerFragment_GP] 			= { LF_PROVISIONING_COOK, LF_PROVISIONING_BREW },
 
 		--Dedicated fragments
 		[storeComponents[ZO_MODE_STORE_BUY].list._fragment] 		= { LF_VENDOR_BUY },
@@ -2038,6 +2338,7 @@ local callbacksUsingFragments = {
 		--callbacksUsingFragments[true][gamepadLibFiltersGuildStoreSellFragment] 	= { LF_GUILDSTORE_SELL }
 		--callbacksUsingFragments[true][gamepadLibFiltersMailSendFragment] 			= { LF_MAIL_SEND }
 		--callbacksUsingFragments[true][gamepadLibFiltersPlayerTradeFragment] 		= { LF_TRADE }
+		--callbacksUsingFragments[true][gamepadLibFiltersInventoryQuestFragment] 	= { LF_INVENTORY_QUEST }
 		--[1] = { LF_BANK_WITHDRAW },
 		--[1] = { LF_GUILDBANK_WITHDRAW },
 		--[1] = { LF_HOUSE_BANK_WITHDRAW },
@@ -2046,6 +2347,34 @@ local callbacksUsingFragments = {
 }
 callbacks.usingFragments = callbacksUsingFragments
 
+
+--A table with the mapping of a fragment to a table of filterTypes that libFilters._currentFilterType is not allowed to
+--currently equal to. Else the fragment's callback will not fire. e.g. the inventory fragment will fire after the mail send layout fragment.
+--The mail send layout fragment will set libFilters._currentFilterType to LF_MAIL_SEND and the inventory fragment would afterwards try to detect
+--other panels again, which is not needed!
+local callbackFragmentsBlockedMapping = {
+	--Keyboard
+	[false] = {
+		[SCENE_SHOWN] = {
+			[inventoryFragment] = { LF_MAIL_SEND }, --Will not raise a callback for inventoryFragment if current filterType is LF_MAIL_SEND
+
+		},
+		[SCENE_HIDDEN] = {
+
+		}
+	},
+
+--000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+
+	--Gamepad
+	[true] = {
+		[SCENE_SHOWN] = {
+		},
+		[SCENE_HIDDEN] = {
+		}
+	}
+}
+callbacks.callbackFragmentsBlockedMapping = callbackFragmentsBlockedMapping
 
 --[scene_Or_sceneName] = { LF_* filterTypeConstant, LF_* filterTypeConstant, ... }
 --0 means no dedicated LF_* constant can be used and the filterType will be determined automatically via function
@@ -2056,10 +2385,6 @@ callbacks.usingFragments = callbacksUsingFragments
 local callbacksUsingScenes = {
 	--Keyboard
 	[false] = {
-		--LF_ENCHANTING_CREATION
-		--LF_ENCHANTING_EXTRACTION
-		[enchantingScene] 					= { LF_ENCHANTING_CREATION, LF_ENCHANTING_EXTRACTION },
-
 		--Dedicated scenes
 	},
 
@@ -2100,7 +2425,7 @@ callbacks.usingScenes = callbacksUsingScenes
 -->0 should be added as last entry if an automated check should be done at the end!
 --Example:
 --[controlVariable] = { LF_INVENTORY, 0 }
-local callbacksUsingControl = {
+local callbacksUsingControls = {
 	--Keyboard
 	[false] = {
 	 	--LF_SMITHING_REFINE
@@ -2120,7 +2445,7 @@ local callbacksUsingControl = {
 		[researchPanel] 					= { LF_SMITHING_RESEARCH, LF_JEWELRY_RESEARCH },
 		--LF_SMITHING_RESEARCH_DIALOG
 		--LF_JEWELRY_RESEARCH_DIALOG
-		[researchPanelControl] 				= { LF_SMITHING_RESEARCH_DIALOG, LF_JEWELRY_RESEARCH_DIALOG },
+		[ZO_ListDialog1] 					= { LF_SMITHING_RESEARCH_DIALOG, LF_JEWELRY_RESEARCH_DIALOG, },
 	},
 
 --000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
@@ -2131,8 +2456,104 @@ local callbacksUsingControl = {
 		--Dedicated controls
 	},
 }
-callbacks.usingControls = callbacksUsingControl
+callbacks.usingControls = callbacksUsingControls
 
+
+--Callbacks using special functions etc.
+--Important: No callbacks are registered diretly to the table contents below!
+-->The table below "is just kept to fill the reference control/scene/fragment" to table callbacks.filterTypeToCallbackRef
+-->so that e.g. the EVENT_END_CRAFTING_STATION_INTERACT will find a referenced control to raise a SCENE_HIDDEN callback on
+-->via function libFilters_RaiseFilterTypeCallback(libFilters, lastShownFilterType, SCENE_HIDDEN, nil)
+local callbacksUsingSpecials = {
+	--Keyboard
+	[false] = {
+		[enchanting.control] 				= { LF_ENCHANTING_CREATION, LF_ENCHANTING_EXTRACTION }, 	--via ENCHANTING:OnModeUpdated
+		[provisioner.control] 				= { LF_PROVISIONING_COOK, LF_PROVISIONING_BREW },  			--via PROVISIONER:OnTabFilterChanged
+		[alchemy.control]              		= { LF_ALCHEMY_CREATION },									--via ALCHEMY:SetMode
+		--All crafting tables open/close via EVENT_CRAFTING_STATION_INTERACT and EVENT_END_CRAFTING_STATION_INTERACT
+
+		--todo [universalDeconstructPanel]			= {}
+	},
+
+--000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+
+	--Gamepad
+	[true] = {
+		[provisioner_GP.control] 			= { LF_PROVISIONING_COOK, LF_PROVISIONING_BREW },  			--via GAMEPAD_PROVISIONER:OnTabFilterChanged
+
+		--todo [universalDeconstructPanel_GP] = {}
+	},
+
+}
+callbacks.usingSpecials = callbacksUsingSpecials
+
+
+--The mapping tables to determine the callback's reference variables by the filterType and inputType
+local filterTypeToCallbackRef = {
+	--Keyboard
+	[false] = {
+	},
+
+--000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+
+	--Gamepad
+	[true] = {
+	},
+}
+--Fill the mapping table above for each type of reference and inputType
+--Scenes
+for inputType, sceneCallbackData in pairs(callbacksUsingScenes) do
+	for sceneVar, filterTypes in pairs(sceneCallbackData) do
+		for _, filterType in ipairs(filterTypes) do
+			filterTypeToCallbackRef[inputType][filterType] = { ref = sceneVar, refType = LIBFILTERS_CON_TYPEOFREF_SCENE }
+		end
+	end
+end
+--Fragments
+for inputType, fragmentCallbackData in pairs(callbacksUsingFragments) do
+	for fragmentVar, filterTypes in pairs(fragmentCallbackData) do
+		for _, filterType in ipairs(filterTypes) do
+			filterTypeToCallbackRef[inputType][filterType] = { ref = fragmentVar, refType = LIBFILTERS_CON_TYPEOFREF_FRAGMENT }
+		end
+	end
+end
+--Controls
+for inputType, controlsCallbackData in pairs(callbacksUsingControls) do
+	for controlVar, filterTypes in pairs(controlsCallbackData) do
+		for _, filterType in ipairs(filterTypes) do
+			filterTypeToCallbackRef[inputType][filterType] = { ref = controlVar, refType = LIBFILTERS_CON_TYPEOFREF_CONTROL }
+		end
+	end
+end
+--Specials
+for inputType, specialsCallbackData in pairs(callbacksUsingSpecials) do
+	for specialVar, filterTypes in pairs(specialsCallbackData) do
+		for _, filterType in ipairs(filterTypes) do
+			local refType = checkIfControlSceneFragmentOrOther(specialVar)
+			filterTypeToCallbackRef[inputType][filterType] = { ref = specialVar, refType = refType }
+		end
+	end
+end
+callbacks.filterTypeToCallbackRef = filterTypeToCallbackRef
+
+
+--Special callbacks at controls e.g. OnHide of ZO_ListDialog1 -> Detect the shown panel again to e.g. change the currentFilterType from LF_SMITHING_RESEARCH_DIALOG to
+--LF_SMITHING_RESEARCH again
+--[controlOrSceneOrFragentReference] = { [SCENE_SHOWN  or SCENE_HIDDEN] =
+-- function(controlOrSceneOrFragmentRef, stateStr, inputType, refType) yourFunction(controlOrSceneOrFragmentRef, stateStr, inputType, refType) end }
+callbacks.special = {
+	--LF_SMITHING_RESEARCH_DIALOG
+	--LF_JEWELRY_RESEARCH_DIALOG
+	[ZO_ListDialog1] = {
+		[SCENE_HIDDEN] = function(controlOrSceneOrFragmentRef, stateStr, inputType, refType)
+			if libFilters.debug then dv(">>>Special callback: ZO_ListDialog1:OnHide") end
+			--Detect the shown panel again
+			if not libFilters:IsCraftingStationShown() then return end
+			libFilters:RaiseShownFilterTypeCallback(SCENE_SHOWN, inputType, false)
+		end,
+	},
+}
 
 if libFilters.debug then dd("LIBRARY CONSTANTS FILE - END") end
+
 

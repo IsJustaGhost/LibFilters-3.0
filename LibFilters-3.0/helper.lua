@@ -3,14 +3,26 @@
 ------------------------------------------------------------------------------------------------------------------------
 local libFilters = LibFilters3
 
---Helper variables of the library
-local constants   = libFilters.constants
-local kbc         = constants.keyboard
---local gpc         = constants.gamepad
+local tos = tostring
 
-local inventories = kbc.inventories
-
+--Helper variables of ESO
 local iigpm = IsInGamepadPreferredMode
+
+--Helper variables of the library
+local constants   =                         libFilters.constants
+local mapping     =                         libFilters.mapping
+
+local kbc         =                         constants.keyboard
+local gpc         =                         constants.gamepad
+
+--Keyboard
+local inventories = kbc.inventories
+local universalDeconstructPanel =           kbc.universalDeconstructPanel
+
+--Gamepad
+local universalDeconstructPanel_GP =        gpc.universalDeconstructPanel_GP
+
+local isUniversalDeconGiven =               libFilters.isUniversalDeconstructionProvided
 
 --Debugging
 local debugFunctions = libFilters.debugFunctions
@@ -31,6 +43,7 @@ if libFilters.debug then dd("LIBRARY HELPER FILE - START") end
 --Local variables for the helpers
 ------------------------------------------------------------------------------------------------------------------------
 local helpers = {}
+local defaultLibFiltersAttributeToStoreTheFilterType = constants.defaultAttributeToStoreTheFilterType --.LibFilters3_filterType
 local defaultOriginalFilterAttributeAtLayoutData = constants.defaultAttributeToAddFilterFunctions --.additionalFilter
 
 
@@ -196,6 +209,10 @@ end
 local doesRetraitItemItemPassFilterOriginal =   ZO_RetraitStation_DoesItemPassFilter
 local doesSmithingItemPassFilterOriginal =      ZO_SharedSmithingExtraction_DoesItemPassFilter
 local doesImprovementItemPassFilterOriginal =   ZO_SharedSmithingImprovement_DoesItemPassFilter
+local doesUniversalDeconstructionItemPassFilter
+if ZO_UNIVERSAL_DECONSTRUCTION_FILTER_TYPES ~= nil then
+    doesUniversalDeconstructionItemPassFilter = ZO_UniversalDeconstructionPanel_Shared.DoesItemPassFilter
+end
 
 
 --Original function at:
@@ -783,7 +800,6 @@ helpers["ZO_SharedSmithingExtraction_DoesItemPassFilter"] = {
     }
 }
 
-
 --enable LF_SMITHING_IMPROVEMENT/LF_JEWELRY_IMPROVEMENT smithing/jewelry
 helpers["ZO_SharedSmithingImprovement_DoesItemPassFilter"] = {
     version = 1,
@@ -805,6 +821,69 @@ helpers["ZO_SharedSmithingImprovement_DoesItemPassFilter"] = {
         end,
     }
 }
+
+
+--Universal deconstruction, added with API101033 Ascending Tide
+if isUniversalDeconGiven then
+    --Mapping variables
+    local detectActiveUniversalDeconstructionTab = libFilters.DetectActiveUniversalDeconstructionTab
+    local filterTypeToFilterBase = mapping.universalDeconFilterTypeToFilterBase
+    --Update local ref variables
+    universalDeconstructPanel = universalDeconstructPanel or kbc.universalDeconstructPanel
+    universalDeconstructPanel_GP = universalDeconstructPanel_GP or gpc.universalDeconstructPanel_GP
+
+
+    --Workaround for GamePad mode where ZOs did not create the function GetCurrentFilter "yet"
+    if not universalDeconstructPanel_GP.inventory.GetCurrentFilter then
+        function universalDeconstructPanel_GP.inventory.GetCurrentFilter()
+            --universalDeconstructPanel_GP.libFilters_currentTab will be filled at LibFilters-3.0.lua, function universalDeconOnFilterChangedCallback
+            --of the callback universalDeconstructPanel_GP:RegisterCallback("OnFilterChanged", 	universalDeconOnFilterChangedCallback)
+            return universalDeconstructPanel_GP.libFilters_currentTab or ZO_GetUniversalDeconstructionFilterType("all")
+        end
+    end
+
+    
+    --  enable LF_SMITHING_DECONSTRUCT/LF_JEWELRY_DECONSTRUCT/LF_ENCHANTING_EXTARCT smithing/jewelry/enchanting extract at the Universal Deconstruction NPC
+    helpers["ZO_UniversalDeconstructionPanel_Shared.DoesItemPassFilter"] = {
+        version = 1,
+        filterTypes = {
+            [true] = {LF_SMITHING_DECONSTRUCT, LF_JEWELRY_DECONSTRUCT, LF_ENCHANTING_EXTRACTION},
+            [false]= {LF_SMITHING_DECONSTRUCT, LF_JEWELRY_DECONSTRUCT, LF_ENCHANTING_EXTRACTION}
+        },
+        locations = {
+            [1] = ZO_UniversalDeconstructionPanel_Shared,
+        },
+        helper = {
+            funcName = "DoesItemPassFilter",
+            func = function(bagId, slotIndex, filterType)
+                local result = doesUniversalDeconstructionItemPassFilter(bagId, slotIndex, filterType)
+                if not result then return result end
+                --> See LibFilters-3.0.lua, function "applyFixesEarly":
+                --> Regiser a callbacks to the keyboard and gamepad universal decon filters (dropdown, tab, other) change
+                --> UNIVERSAL_DECONSTRUCTION.deconstructionPanel:RegisterCallback("OnFilterChanged", TestOnFilterChanged)
+                --> UNIVERSAL_DECONSTRUCTION_GAMEPAD.deconstructionPanel:RegisterCallback("OnFilterChanged", TestOnFilterChanged)
+                --> At the callback check for the active tab via UNIVERSAL_DECONSTRUCTION.deconstructionPanel.inventory:GetCurrentFilter() which returns
+                --> the filter table, where table.key will be e.g. "alL"/"enchantments" etc.
+                --> Map this filterType key to the LibFilters LF_* filterType constant then via table mapping.universalDeconTabKeyToLibFiltersFilterType
+                local universalDeconPanel = (iigpm() and universalDeconstructPanel_GP) or universalDeconstructPanel
+                local universalDeconPanelInv = universalDeconPanel.inventory
+
+                local currentFilter = universalDeconPanelInv:GetCurrentFilter()
+                detectActiveUniversalDeconstructionTab = detectActiveUniversalDeconstructionTab or libFilters.DetectActiveUniversalDeconstructionTab
+                local libFiltersFilterType = detectActiveUniversalDeconstructionTab(filterType, currentFilter.key)
+                if libFiltersFilterType ~= nil then
+                    --Get the variable where the .additionalFilter function is stored via the filterType
+                    -->!!!Re-uses existing deconstruction or enchanting references as there does not exist any LF_UNIVERSAL_DECONSTRUCTION constant!!!
+                    local base = filterTypeToFilterBase[libFiltersFilterType]
+                    if base then
+                        return checkAndRundAdditionalFiltersBag(base, bagId, slotIndex, result)
+                    end
+                end
+                return result
+            end,
+        }
+    }
+end
 
 ------------------------------------------------------------------------------------------------------------------------
  -- -^- KEYBOARD and GAMEPAD - shared helpers
